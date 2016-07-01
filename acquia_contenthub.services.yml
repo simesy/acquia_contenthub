@@ -1,0 +1,34 @@
+services:
+  acquia_contenthub.entity_manager:
+    class: Drupal\acquia_contenthub\EntityManager
+    arguments: ['@logger.factory', '@config.factory', '@acquia_contenthub.client_manager']
+
+  acquia_contenthub.client_manager:
+    class: Drupal\acquia_contenthub\Client\ClientManager
+    arguments: ['@logger.factory', '@config.factory']
+
+  acquia_contenthub.normalizer.entity.content_hub_cdf:
+    class: Drupal\acquia_contenthub\Normalizer\ContentEntityCdfNormalizer
+    arguments: ['@config.factory', '@acquia_contenthub.normalizer.content_entity_view_modes_extractor', '@module_handler']
+    tags:
+      - { name: normalizer, priority: 10 }
+
+  acquia_contenthub.normalizer.content_entity_view_modes_extractor:
+    class: Drupal\acquia_contenthub\Normalizer\ContentEntityViewModesExtractor
+    arguments: ['@current_user', '@config.factory', '@entity_display.repository', '@entity_type.manager', '@renderer', '@http_kernel.basic', '@account_switcher']
+
+  acquia_contenthub.encoder.content_hub_cdf:
+    class: Drupal\acquia_contenthub\Encoder\ContentHubCdfEncoder
+    tags:
+      - { name: encoder, priority: 10, format: content_hub_cdf }
+
+  acquia_contenthub.exception.content_hub_cdf:
+    class: Drupal\acquia_contenthub\EventSubscriber\ExceptionCdfJsonSubscriber
+    tags:
+      - { name: event_subscriber }
+
+  acquia_contenthub.config_cache_tag:
+    class: Drupal\acquia_contenthub\EventSubscriber\ConfigCacheTag
+    arguments: ['@cache_tags.invalidator']
+    tags:
+      - { name: event_subscriber }
