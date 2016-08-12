@@ -1,0 +1,77 @@
+h1 {
+  font-size: 2.25em;
+}
+
+ul {
+  list-style-type: none;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  background-color: #fdfefe;
+  color: #444;
+  font-size: 1em;
+  line-height: 1.5;
+}
+
+a {
+  background-color: transparent;
+  -webkit-transition: color .1s linear;
+  -moz-transition: color .1s linear;
+  transition: color .1s linear;
+  color: #1576B2;
+  text-decoration: none;
+}
+
+.ch-discovery-page h1{
+  margin-left: 1.5rem;
+  margin-bottom: 1rem;
+  font-family: "Open Sans",sans-serif;
+}
+
+.ch-list {
+  font-size: 1.2rem;
+  margin-bottom: 2rem;
+  padding: 0;
+}
+
+.ch-list li
+{
+  border-radius: 2px;
+  border-bottom: 1px dotted #1576B2;
+  padding: .9rem 1.5rem;
+}
+
+.ch-id {
+  font-size: 1rem;
+  color: #999;
+  margin-right: 1rem;
+  position: absolute;
+}
+
+.ch-data {
+  white-space: nowrap;
+  padding-left: 4rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ch-btn {
+  background-color: #1576B2;
+  color: #fff;
+  display: inline-block;
+  font-size: .75em;
+  line-height: 1;
+  padding: .5rem .75rem;
+  border-radius: 3px;
+  font-weight: 700;
+  border: 0;
+}
+
+.ch-success {
+  background-color: #F8FFF0;
+  padding: 5px;
+  color: #234600;
+  border-color: #234600;
+  border: 1px;
+}
