@@ -6,8 +6,7 @@
 
 use Drupal\Core\Entity\EntityInterface;
 use Drupal\Core\Routing\RouteMatchInterface;
-use Drupal\Core\Url;
-use Symfony\Component\HttpFoundation\Request;
+use Drupal\taxonomy\Entity\Vocabulary;
 
 /**
  * Implements hook_help().
@@ -60,6 +59,9 @@ function acquia_contenthub_send_entities() {
   /** @var \Drupal\acquia_contenthub\Normalizer\ContentEntityCdfNormalizer $acquia_contenthub_normalizer */
   $acquia_contenthub_normalizer = \Drupal::service('acquia_contenthub.normalizer.entity.acquia_contenthub_cdf');
 
+  /** @var \Drupal\acquia_contenthub\Controller\ContentHubEntityExportController $acquia_contenthub_export_controller */
+  $acquia_contenthub_export_controller = \Drupal::service('acquia_contenthub.acquia_contenthub_export_entities');
+
   $entities = $entity_manager->collectExportEntities();
 
   // Verify that the collected entities are not already included within the
@@ -86,20 +88,7 @@ function acquia_contenthub_send_entities() {
     $entity_type = $entity->getEntityTypeId();
     $entity_id = $entity->id();
     $bulk_url_array[$entity_type][$entity_id] = $entity_id;
-    try {
-      $url = Url::fromRoute('acquia_contenthub.entity.' . $entity_type . '.GET.acquia_contenthub_cdf', [
-        'entity_type' => $entity_type,
-        'entity_id' => $entity_id,
-        $entity_type => $entity_id,
-        '_format' => 'acquia_contenthub_cdf',
-        'include_references' => 'true',
-      ])->toString();
-      $url = str_replace($base_path, '/', $url);
-      Request::create($url);
-    }
-    catch (\Exception $e) {
-      // Do nothing, route does not exist.
-    }
+    $acquia_contenthub_export_controller->getEntityCdfByInternalRequest($entity_type, $entity_id);
   }
 
   // Now implode parameters.
@@ -108,4 +97,29 @@ function acquia_contenthub_send_entities() {
   }
   $resource_url = $entity_manager->getBulkResourceUrl($bulk_url_array);
   $entity_manager->updateRemoteEntities($resource_url);
+}
+
+
+// Helper function.
+/**
+ * Returns a vocabulary object which matches the given name.
+ *
+ * Will return null if no such vocabulary exists.
+ *
+ * @param string $vocabulary_name
+ *   This is the name of the section which is required.
+ *
+ * @return Object
+ *   This is the vocabulary object with the name or null if no such vocabulary
+ *   exists.
+ */
+function acquia_contenthub_get_vocabulary_by_name($vocabulary_name) {
+  $vocabs = Vocabulary::loadMultiple(NULL);
+  foreach ($vocabs as $vocab_object) {
+    /* @var $vocab_object \Drupal\taxonomy\Entity\Vocabulary  */
+    if ($vocab_object->getOriginalId() == $vocabulary_name) {
+      return $vocab_object;
+    }
+  }
+  return NULL;
 }

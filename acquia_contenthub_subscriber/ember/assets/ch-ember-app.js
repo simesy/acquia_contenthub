@@ -189,46 +189,53 @@ define('ch-ember-app/components/discovery-page', ['exports', 'ember', 'ch-ember-
         contentType: 'application/json',
         data: JSON.stringify(queryRequestBody)
       }).then(function (response) {
-        // empty search results
+        // hide the no results msg.
+        _ember['default'].$('.no-result').hide();
+        // empty search results.
         self.get('searchResults').clear();
-        // populate search results with search response
-        response.hits.hits.forEach(function (item) {
-          var titleValue = null;
-          var bodyValue = null;
-          // NOTE: Team has decided to support only `und` and `en` lanugages for
-          // Drupal 8 at this time. The below response parsing will change when
-          // more languages are supported.
-          // REFER: TODO
-          if (_ember['default'].isPresent(item._source.data.attributes.title)) {
-            // Use `undefined` language, for title value, if it is present
-            if (_ember['default'].isPresent(item._source.data.attributes.title.value.und)) {
-              titleValue = item._source.data.attributes.title.value.und;
+        if (response.hits.hits.length > 0) {
+          // populate search results with search response
+          response.hits.hits.forEach(function (item) {
+            var titleValue = null;
+            var bodyValue = null;
+            // NOTE: Team has decided to support only `und` and `en` lanugages for
+            // Drupal 8 at this time. The below response parsing will change when
+            // more languages are supported.
+            // REFER: TODO
+            if (_ember['default'].isPresent(item._source.data.attributes.title)) {
+              // Use `undefined` language, for title value, if it is present
+              if (_ember['default'].isPresent(item._source.data.attributes.title.value.und)) {
+                titleValue = item._source.data.attributes.title.value.und;
+              }
+              // Use overridden `english` lanugage, for title value, if it is present
+              if (_ember['default'].isPresent(item._source.data.attributes.title.value.en)) {
+                titleValue = item._source.data.attributes.title.value.en;
+              }
             }
-            // Use overridden `english` lanugage, for title value, if it is present
-            if (_ember['default'].isPresent(item._source.data.attributes.title.value.en)) {
-              titleValue = item._source.data.attributes.title.value.en;
+            if (_ember['default'].isPresent(item._source.data.attributes.body)) {
+              // Use `undefined` language, for body value, if it is present
+              if (_ember['default'].isPresent(item._source.data.attributes.body.value.und)) {
+                bodyValue = JSON.parse(item._source.data.attributes.body.value.und).value;
+              }
+              // Use overridden `english` lanugage, for body value, if it is present
+              if (_ember['default'].isPresent(item._source.data.attributes.body.value.en)) {
+                bodyValue = JSON.parse(item._source.data.attributes.body.value.en).value;
+              }
             }
-          }
-          if (_ember['default'].isPresent(item._source.data.attributes.body)) {
-            // Use `undefined` language, for body value, if it is present
-            if (_ember['default'].isPresent(item._source.data.attributes.body.value.und)) {
-              bodyValue = JSON.parse(item._source.data.attributes.body.value.und).value;
+            // Add item to searchResults only if title is set at this point
+            if (_ember['default'].isPresent(titleValue)) {
+              var processed_item = {
+                "uuid": item._source.data.uuid,
+                "title": titleValue,
+                "body": bodyValue
+              };
+              self.get('searchResults').pushObject(processed_item);
             }
-            // Use overridden `english` lanugage, for body value, if it is present
-            if (_ember['default'].isPresent(item._source.data.attributes.body.value.en)) {
-              bodyValue = JSON.parse(item._source.data.attributes.body.value.en).value;
-            }
-          }
-          // Add item to searchResults only if title is set at this point
-          if (_ember['default'].isPresent(titleValue)) {
-            var processed_item = {
-              "uuid": item._source.data.uuid,
-              "title": titleValue,
-              "body": bodyValue
-            };
-            self.get('searchResults').pushObject(processed_item);
-          }
-        });
+          });
+        } else {
+          _ember['default'].$('.no-result').show();
+          _ember['default'].$('.no-result').text('No content is available for import.');
+        }
       });
     },
 
@@ -1598,7 +1605,13 @@ define("ch-ember-app/templates/components/discovery-page", ["exports"], function
         var el5 = dom.createTextNode("\n      ");
         dom.appendChild(el4, el5);
         dom.appendChild(el3, el4);
-        var el4 = dom.createTextNode("\n\n\n");
+        var el4 = dom.createTextNode("\n\n");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createElement("div");
+        dom.setAttribute(el4, "class", "no-result alert alert-warning");
+        dom.setAttribute(el4, "role", "alert");
+        dom.appendChild(el3, el4);
+        var el4 = dom.createTextNode("\n");
         dom.appendChild(el3, el4);
         var el4 = dom.createElement("div");
         var el5 = dom.createTextNode("\n");
@@ -1636,7 +1649,7 @@ define("ch-ember-app/templates/components/discovery-page", ["exports"], function
         morphs[4] = dom.createMorphAt(dom.childAt(element4, [7]), 1, 1);
         morphs[5] = dom.createElementMorph(element6);
         morphs[6] = dom.createElementMorph(element7);
-        morphs[7] = dom.createMorphAt(dom.childAt(element2, [7]), 1, 1);
+        morphs[7] = dom.createMorphAt(dom.childAt(element2, [9]), 1, 1);
         return morphs;
       },
       statements: [["inline", "input", [], ["type", "text", "name", "searchKeywords", "value", ["subexpr", "@mut", [["get", "searchKeyword", ["loc", [null, [41, 68], [41, 81]]]]], [], []], "class", "form-control", "placeholder", "Search keywords ..."], ["loc", [null, [41, 20], [41, 138]]]], ["inline", "pikaday-input", [], ["value", ["subexpr", "@mut", [["get", "filterFromDate", ["loc", [null, [45, 40], [45, 54]]]]], [], []], "format", "MM-DD-YYYY", "placeholder", "From Date ...", "onSelection", ["subexpr", "action", ["setFilterFromDate"], [], ["loc", [null, [45, 115], [45, 143]]]]], ["loc", [null, [45, 18], [45, 145]]]], ["inline", "pikaday-input", [], ["value", ["subexpr", "@mut", [["get", "filterToDate", ["loc", [null, [46, 40], [46, 52]]]]], [], []], "format", "MM-DD-YYYY", "placeholder", "To Date ...", "onSelection", ["subexpr", "action", ["setFilterToDate"], [], ["loc", [null, [46, 111], [46, 137]]]]], ["loc", [null, [46, 18], [46, 139]]]], ["block", "power-select-multiple", [], ["options", ["subexpr", "@mut", [["get", "sources", ["loc", [null, [50, 29], [50, 36]]]]], [], []], "selected", ["subexpr", "@mut", [["get", "selectedSource", ["loc", [null, [51, 30], [51, 44]]]]], [], []], "placeholder", "Source / Origin ...", "onchange", ["subexpr", "action", [["subexpr", "mut", [["get", "selectedSource", ["loc", [null, [53, 43], [53, 57]]]]], [], ["loc", [null, [53, 38], [53, 58]]]]], [], ["loc", [null, [53, 30], [53, 59]]]]], 0, null, ["loc", [null, [49, 18], [57, 44]]]], ["block", "power-select-multiple", [], ["options", ["subexpr", "@mut", [["get", "tags", ["loc", [null, [61, 29], [61, 33]]]]], [], []], "selected", ["subexpr", "@mut", [["get", "selectedTag", ["loc", [null, [62, 30], [62, 41]]]]], [], []], "placeholder", "Tags ...", "onchange", ["subexpr", "action", [["subexpr", "mut", [["get", "selectedTag", ["loc", [null, [64, 43], [64, 54]]]]], [], ["loc", [null, [64, 38], [64, 55]]]]], [], ["loc", [null, [64, 30], [64, 56]]]]], 1, null, ["loc", [null, [60, 18], [68, 44]]]], ["element", "action", ["searchContentHubWithFilters"], [], ["loc", [null, [71, 50], [71, 90]]]], ["element", "action", ["importEntity"], [], ["loc", [null, [79, 64], [79, 89]]]], ["block", "each", [["get", "searchResults", ["loc", [null, [89, 10], [89, 23]]]]], [], 2, null, ["loc", [null, [89, 2], [96, 11]]]]],
@@ -1677,7 +1690,7 @@ catch(err) {
 /* jshint ignore:start */
 
 if (!runningTests) {
-  require("ch-ember-app/app")["default"].create({"name":"ch-ember-app","version":"0.0.0+c9674043"});
+  require("ch-ember-app/app")["default"].create({"name":"ch-ember-app","version":"0.0.0+8d8abcf0"});
 }
 
 /* jshint ignore:end */

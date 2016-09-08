@@ -21,9 +21,9 @@ use Drupal\Core\Entity\EntityRepository;
 use Drupal\Core\Render\Renderer;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Drupal\Core\Url;
-use Symfony\Component\HttpFoundation\Request;
-use Drupal\Component\Serialization\Json;
+use Drupal\Component\Uuid\Uuid;
 use Drupal\acquia_contenthub\EntityManager as EntityManager;
+use Drupal\acquia_contenthub\Controller\ContentHubEntityExportController;
 
 /**
  * Converts the Drupal entity object to a Acquia Content Hub CDF array.
@@ -115,6 +115,13 @@ class ContentEntityCdfNormalizer extends NormalizerBase {
   protected $entityTypeManager;
 
   /**
+   * The Export Controller.
+   *
+   * @var \Drupal\acquia_contenthub\Controller\ContentHubEntityExportController
+   */
+  protected $exportController;
+
+  /**
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container) {
@@ -126,7 +133,8 @@ class ContentEntityCdfNormalizer extends NormalizerBase {
       $container->get('http_kernel.basic'),
       $container->get('renderer'),
       $container->get('acquia_contenthub.entity_manager'),
-      $container->get('entity_type.manager')
+      $container->get('entity_type.manager'),
+      $container->get('acquia_contenthub.acquia_contenthub_export_entities')
     );
   }
 
@@ -145,8 +153,10 @@ class ContentEntityCdfNormalizer extends NormalizerBase {
    *   The entity manager.
    * @param \Drupal\Core\Entity\EntityTypeManagerInterface $entity_type_manager
    *   The entity type manager.
+   * @param \Drupal\acquia_contenthub\Controller\ContentHubEntityExportController $export_controller
+   *   The Export Controller.
    */
-  public function __construct(ConfigFactoryInterface $config_factory, ContentEntityViewModesExtractorInterface $content_entity_view_modes_normalizer, ModuleHandlerInterface $module_handler, EntityRepository $entity_repository, HttpKernelInterface $kernel, Renderer $renderer, EntityManager $entity_manager, EntityTypeManagerInterface $entity_type_manager) {
+  public function __construct(ConfigFactoryInterface $config_factory, ContentEntityViewModesExtractorInterface $content_entity_view_modes_normalizer, ModuleHandlerInterface $module_handler, EntityRepository $entity_repository, HttpKernelInterface $kernel, Renderer $renderer, EntityManager $entity_manager, EntityTypeManagerInterface $entity_type_manager, ContentHubEntityExportController $export_controller) {
     global $base_url;
     $this->baseUrl = $base_url;
     $this->contentHubAdminConfig = $config_factory->get('acquia_contenthub.admin_settings');
@@ -157,6 +167,7 @@ class ContentEntityCdfNormalizer extends NormalizerBase {
     $this->renderer = $renderer;
     $this->entityManager = $entity_manager;
     $this->entityTypeManager = $entity_type_manager;
+    $this->exportController = $export_controller;
   }
 
   /**
@@ -274,17 +285,8 @@ class ContentEntityCdfNormalizer extends NormalizerBase {
           // This is the best way to really make sure the content in Content Hub
           // and the content shown to any user is 100% the same.
           try {
-            $url = Url::fromRoute('acquia_contenthub.entity.' . $entity->getEntityTypeId() . '.GET.acquia_contenthub_cdf', [
-              'entity_type' => $entity->getEntityTypeId(),
-              'entity_id' => $entity->id(),
-              $entity->getEntityTypeId() => $entity->id(),
-              '_format' => 'acquia_contenthub_cdf',
-            ])->toString();
-            $request = Request::create($url);
-            /** @var \Drupal\Core\Render\HtmlResponse $response */
-            $response = $this->kernel->handle($request, HttpKernelInterface::SUB_REQUEST);
-            $referenced_entity_cdf_json = $response->getContent();
-            $referenced_entity_list_cdf = Json::decode($referenced_entity_cdf_json);
+            // Obtain the Entity CDF by making an hmac-signed internal request.
+            $referenced_entity_list_cdf = $this->exportController->getEntityCdfByInternalRequest($entity->getEntityTypeId(), $entity->id());
             $referenced_entity_list_cdf = array_pop($referenced_entity_list_cdf);
             if (is_array($referenced_entity_list_cdf)) {
               foreach ($referenced_entity_list_cdf as $referenced_entity_cdf) {
@@ -347,6 +349,15 @@ class ContentEntityCdfNormalizer extends NormalizerBase {
       $items = $serialized_field;
       // If there's nothing in this field, ignore it.
       if ($items == NULL) {
+        continue;
+      }
+
+      // @TODO: This is a HACK to make it work with vocabularies. It should be
+      // replaced with appropriate handling of taxonomy vocabulary entities.
+      if ($name == 'vid' && $entity->getEntityTypeId() == 'taxonomy_term') {
+        $attribute = new Attribute(Attribute::TYPE_STRING);
+        $attribute->setValue($items[0]['target_id'], $langcode);
+        $contenthub_entity->setAttribute('vocabulary', $attribute);
         continue;
       }
 
@@ -500,6 +511,7 @@ class ContentEntityCdfNormalizer extends NormalizerBase {
     foreach ($fields as $name => $field) {
       // Continue if this is an excluded field or the current user does not
       // have access to view it.
+      $context['account'] = isset($context['account']) ? $context['account'] : NULL;
       if (in_array($field->getFieldDefinition()->getName(), $excluded_fields) || !$field->access('view', $context['account']) || $name == 'type') {
         continue;
       }
@@ -542,8 +554,11 @@ class ContentEntityCdfNormalizer extends NormalizerBase {
     $ref_entities = $this->getReferencedFields($entity, $context);
     foreach ($ref_entities as $key => $entity) {
       if (!in_array($entity->uuid(), $uuids)) {
-        $referenced_entities[] = $entity;
-        $this->getMultilevelReferencedFields($entity, $referenced_entities, $context);
+        // @TODO: This if-condition is a hack to avoid Vocabulary entities.
+        if ($entity instanceof \Drupal\Core\Entity\ContentEntityInterface) {
+          $referenced_entities[] = $entity;
+          $this->getMultilevelReferencedFields($entity, $referenced_entities, $context);
+        }
       }
     }
 
@@ -588,19 +603,36 @@ class ContentEntityCdfNormalizer extends NormalizerBase {
         continue;
       }
 
+      // In the case of images/files, etc... we need to add the assets.
+      $file_types = array(
+        'image',
+        'file',
+        'video',
+      );
+
       $field = $fields[$name];
       if (isset($field)) {
         // Try to map it to a known field type.
         $field_type = $field->getFieldDefinition()->getType();
-
         $value = $attribute['value'][$langcode];
         $output = [];
 
-        if (strpos($type_mapping[$field_type], 'array') !== FALSE) {
-          foreach ($value as $item) {
-            $output = json_decode($item, TRUE);
+        if ($field instanceof \Drupal\Core\Field\EntityReferenceFieldItemListInterface) {
+          foreach ($value as $delta => $item) {
+            $uuid = in_array($field_type, $file_types) ? $this->removeBracketsUuid($item) : $item;
+            $entity_type = $field->getFieldDefinition()->getSettings()['target_type'];
+            $output[$delta] = $this->entityRepository->loadEntityByUuid($entity_type, $uuid)->id();
           }
           $value = $output;
+        }
+        else {
+          if (strpos($type_mapping[$field_type], 'array') !== FALSE) {
+            foreach ($value as $item) {
+              // Assigning the output.
+              $output = json_decode($item, TRUE);
+            }
+            $value = $output;
+          }
         }
 
         $entity->$name = $value;
@@ -656,10 +688,16 @@ class ContentEntityCdfNormalizer extends NormalizerBase {
         'title',
         'type',
         'langcode',
+        // This is a special field that we will want to parse as string for now.
+        // @TODO: Replace this to work with taxonomy_vocabulary entities.
+        'vid',
       ),
       'array<string>' => array(
         'fallback',
         'text_with_summary',
+        'image',
+        'file',
+        'video',
       ),
       'array<reference>' => array(
         'entity_reference',
@@ -728,7 +766,6 @@ class ContentEntityCdfNormalizer extends NormalizerBase {
       'promote',
 
       // Getting rid of identifiers and others.
-      'vid',
       'nid',
       'fid',
       'tid',
@@ -797,9 +834,39 @@ class ContentEntityCdfNormalizer extends NormalizerBase {
         'type' => $bundle,
       ];
 
-      // Status is by default unpublished if it is a node.
-      if ($entity_type == 'node') {
-        $values['status'] = 0;
+      // Special treatment according to entity types.
+      switch ($entity_type) {
+        case 'node':
+          // Status is by default unpublished if it is a node.
+          $values['status'] = 0;
+          break;
+
+        case 'file':
+          // If this is a file, then download the asset (image) locally.
+          $attribute = $contenthub_entity->getAttribute('url');
+          foreach ($langcodes as $lang) {
+            if (isset($attribute['value'][$lang])) {
+              $remote_uri = $attribute['value'][$lang];
+              $file_drupal_path = system_retrieve_file($remote_uri, NULL, FALSE);
+              // @TODO: Fix this 'value' key. It should not be like that.
+              $values['uri']['value'] = $file_drupal_path;
+            }
+          }
+          break;
+
+        case 'taxonomy_term':
+          // If it is a taxonomy_term, assing the vocabulary.
+          // @TODO: This is a hack. It should work with vocabulary entities.
+          $attribute = $contenthub_entity->getAttribute('vocabulary');
+          foreach ($langcodes as $lang) {
+            $vocabulary_machine_name = $attribute['value'][$lang];
+            $vocabulary = acquia_contenthub_get_vocabulary_by_name($vocabulary_machine_name);
+            if (isset($vocabulary)) {
+              $values['vid'] = $vocabulary->getOriginalId();
+            }
+          }
+          break;
+
       }
 
       $entity = $this->entityTypeManager->getStorage($entity_type)->create($values);
@@ -820,6 +887,26 @@ class ContentEntityCdfNormalizer extends NormalizerBase {
       }
     }
     return $entity;
+  }
+
+  /**
+   * Remove brackets from the Uuid.
+   *
+   * @param string $uuid_with_brakets
+   *   A [UUID] enclosed within brackets.
+   *
+   * @return mixed
+   *   The UUID without brackets, FALSE otherwise.
+   */
+  protected function removeBracketsUuid($uuid_with_brakets) {
+    preg_match('#\[(.*)\]#', $uuid_with_brakets, $match);
+    $uuid = isset($match[1]) ? $match[1] : '';
+    if (Uuid::isValid($uuid)) {
+      return $uuid;
+    }
+    else {
+      return FALSE;
+    }
   }
 
 }

@@ -67222,9 +67222,9 @@ requireModule("ember");
   generateModule('rsvp', { 'default': Ember.RSVP });
 })();
 
-;(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({"/private/tmp/content-hub-scripts/build-drupal.org-d8/content-hub-ember/tmp/core_object-input_staging-dpYIWcPl.tmp/browserify_stubs.js":[function(require,module,exports){
+;(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({"/Users/stephane.corlosquet/projects/contenthub/content-hub-scripts/build-drupal.org-d8/content-hub-ember/tmp/core_object-input_staging-GsLmjKKh.tmp/browserify_stubs.js":[function(require,module,exports){
 
-},{}]},{},["/private/tmp/content-hub-scripts/build-drupal.org-d8/content-hub-ember/tmp/core_object-input_staging-dpYIWcPl.tmp/browserify_stubs.js"]);
+},{}]},{},["/Users/stephane.corlosquet/projects/contenthub/content-hub-scripts/build-drupal.org-d8/content-hub-ember/tmp/core_object-input_staging-GsLmjKKh.tmp/browserify_stubs.js"]);
 
 ;/*!
  * Bootstrap v3.3.7 (http://getbootstrap.com)
@@ -100931,6 +100931,28 @@ define('ember-resolver/resolver', ['exports', 'ember', 'ember-resolver/utils/mod
       }
     },
 
+    resolveEngine: function resolveEngine(parsedName) {
+      var engineName = parsedName.fullNameWithoutType;
+      var engineModule = engineName + '/engine';
+
+      if (this._moduleRegistry.has(engineModule)) {
+        return this._extractDefaultExport(engineModule);
+      }
+    },
+
+    resolveRouteMap: function resolveRouteMap(parsedName) {
+      var engineName = parsedName.fullNameWithoutType;
+      var engineRoutesModule = engineName + '/routes';
+
+      if (this._moduleRegistry.has(engineRoutesModule)) {
+        var routeMap = this._extractDefaultExport(engineRoutesModule);
+
+        _ember['default'].assert('The route map for ' + engineName + ' should be wrapped by \'buildRoutes\' before exporting.', routeMap.isRouteMap);
+
+        return routeMap;
+      }
+    },
+
     mainModuleName: function mainModuleName(parsedName) {
       // if router:main or adapter:main look for a module with just the type first
       var tmpModuleName = parsedName.prefix + '/' + parsedName.type;
@@ -101011,7 +101033,7 @@ define('ember-resolver/resolver', ['exports', 'ember', 'ember-resolver/utils/mod
         var partializedModuleName = moduleName.replace(/\/-([^\/]*)$/, '/_$1');
 
         if (this._moduleRegistry.has(partializedModuleName)) {
-          _ember['default'].deprecate('Modules should not contain underscores. ' + 'Attempted to lookup "' + moduleName + '" which ' + 'was not found. Please rename "' + partializedModuleName + '" ' + 'to "' + moduleName + '" instead.', false);
+          _ember['default'].deprecate('Modules should not contain underscores. ' + 'Attempted to lookup "' + moduleName + '" which ' + 'was not found. Please rename "' + partializedModuleName + '" ' + 'to "' + moduleName + '" instead.', false, { id: 'ember-resolver.underscored-modules', until: '3.0.0' });
 
           return partializedModuleName;
         } else {

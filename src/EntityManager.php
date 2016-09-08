@@ -449,21 +449,78 @@ class EntityManager {
    * @param string $uuid
    *   The Remote Entity UUID.
    *
-   * @return \Acquia\ContentHubClient\Entity
-   *   The Content Hub Entity.
+   * @return \Drupal\acquia_contenthub\ContentHubEntityDependency|bool
+   *   The Content Hub Entity Dependency if found, FALSE otherwise.
    */
   public function loadRemoteEntity($uuid) {
-    /** @var \Drupal\acquia_contenthub\Client\ClientManagerInterface $client_manager */
-    try {
-      $client = $this->clientManager->getConnection();
-      $contenthub_entity = $client->readEntity($uuid);
+    if ($entity = $this->clientManager->createRequest('readEntity', array($uuid))) {
+      return new ContentHubEntityDependency($entity);
     }
-    catch (ContentHubException $e) {
-      $this->loggerFactory->get('acquia_contenthub')->error($e->getMessage());
-      return FALSE;
-    }
+    return FALSE;
+  }
 
-    return $contenthub_entity;
+  /**
+   * Obtains First-level remote dependencies for the current Content Hub Entity.
+   *
+   * @param \Drupal\acquia_contenthub\ContentHubEntityDependency $content_hub_entity
+   *   The Content Hub Entity.
+   * @param bool|TRUE $use_chain
+   *   If the dependencies should be unique to the dependency chain or not.
+   *
+   * @return array
+   *   An array of \Drupal\acquia_contenthub\ContentHubEntityDependency.
+   */
+  public function getRemoteDependencies(ContentHubEntityDependency $content_hub_entity, $use_chain = TRUE) {
+    $dependencies = array();
+    $uuids = $content_hub_entity->getRemoteDependencies();
+
+    foreach ($uuids as $uuid) {
+      $content_hub_dependent_entity = $this->loadRemoteEntity($uuid);
+      if ($content_hub_dependent_entity === FALSE) {
+        continue;
+      }
+      // If this dependency is already tracked in the dependency chain
+      // then we don't need to consider it a dependency unless we're not using
+      // the chain.
+      if ($content_hub_entity->isInDependencyChain($content_hub_dependent_entity) && $use_chain) {
+        $content_hub_dependent_entity->setParent($content_hub_entity);
+        continue;
+      }
+      $content_hub_dependent_entity->setParent($content_hub_entity);
+      $dependencies[$uuid] = $content_hub_dependent_entity;
+    }
+    return $dependencies;
+  }
+
+  /**
+   * Obtains all dependencies for the current Content Hub Entity.
+   *
+   * It collects dependencies on all levels, flattening out the dependency array
+   * to avoid looping circular dependencies.
+   *
+   * @param \Drupal\acquia_contenthub\ContentHubEntityDependency $content_hub_entity
+   *   The Content Hub Entity.
+   * @param array $dependencies
+   *   An array of \Drupal\acquia_contenthub\ContentHubEntityDependency.
+   * @param bool|TRUE $use_chain
+   *   If the dependencies should be unique to the dependency chain or not.
+   *
+   * @return array
+   *   An array of \Drupal\acquia_contenthub\ContentHubEntityDependency.
+   */
+  public function getAllRemoteDependencies(ContentHubEntityDependency $content_hub_entity, &$dependencies, $use_chain = TRUE) {
+    // Obtaining dependencies of this entity.
+    $dep_dependencies = $this->getRemoteDependencies($content_hub_entity, $use_chain);
+
+    foreach ($dep_dependencies as $uuid => $content_hub_dependency) {
+      if (isset($dependencies[$uuid])) {
+        continue;
+      }
+
+      $dependencies[$uuid] = $content_hub_dependency;
+      $this->getAllRemoteDependencies($content_hub_dependency, $dependencies, $use_chain);
+    }
+    return array_reverse($dependencies, TRUE);
   }
 
   /**
@@ -472,9 +529,7 @@ class EntityManager {
   public function getAllowedEntityTypes() {
     // List of entities that are excluded from displaying on
     // entity configuration page and will not be pushed to Content Hub.
-    // @Todo Support Blocks in future.
     $excluded_types = [
-      'block_content',
       'comment',
       'user',
       'contact_message',
@@ -482,13 +537,6 @@ class EntityManager {
       'menu_link_content',
       'user',
     ];
-
-    // If the config "acquia_contenthub.entity_config.block_content_support"
-    // is set to TRUE, then enable support for block content.
-    if ((bool) $this->configFactory->get('acquia_contenthub.entity_config')->get('block_content_support')) {
-      // Unset block_content.
-      unset($excluded_types[0]);
-    }
 
     $types = $this->entityTypeManager->getDefinitions();
     $entity_types = array();
