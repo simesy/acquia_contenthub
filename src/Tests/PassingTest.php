@@ -27,3 +27,4 @@ class PassingTest extends WebTestBase {
   public function testPassingTest() {
     $this->assertTrue(TRUE);
   }
+}
