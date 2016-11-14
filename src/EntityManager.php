@@ -459,6 +459,9 @@ class EntityManager {
   public function getContentHubEnabledEntityTypeIds() {
     $entity_type_ids = $this->configFactory->get('acquia_contenthub.entity_config')->get('entities');
     $enabled_entity_type_ids = [];
+    if (is_empty($entity_type_ids)) {
+      return $enabled_entity_type_ids;
+    }
     foreach ($entity_type_ids as $entity_type_id => $bundles) {
       // For a type to be enabled, it must at least have one bundle enabled.
       if (!empty(array_filter(array_column($bundles, 'enable_index')))) {
