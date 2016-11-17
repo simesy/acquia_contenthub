@@ -762,56 +762,43 @@ class ContentEntityCdfNormalizer extends NormalizerBase {
    *   An array of excluded properties.
    */
   protected function excludedProperties(ContentEntityInterface $entity) {
-    $excluded_fields = [
-      // Globally excluded fields (for all entity types).
-      'global' => [
-        // The following properties are always included in constructor, so we do
-        // not need to check them again.
-        'id',
-        'revision',
-        'uuid',
-        'created',
-        'changed',
-        'uri',
+    $excluded = array(
+      // The following properties are always included in constructor, so we do
+      // not need to check them again.
+      'id',
+      'revision',
+      'uuid',
+      'created',
+      'changed',
+      'uri',
 
-        // Getting rid of identifiers and others.
-        'nid',
-        'fid',
-        'tid',
-        'uid',
-        'cid',
+      // Getting rid of workflow fields.
+      'status',
+      'sticky',
+      'promote',
 
-        // Do not send revisions.
-        'revision_uid',
-        'revision_translation_affected',
-        'revision_timestamp',
+      // Getting rid of identifiers and others.
+      'nid',
+      'fid',
+      'tid',
+      'uid',
+      'cid',
 
-        // Translation fields.
-        'content_translation_outdated',
-        'content_translation_source',
-        'default_langcode',
+      // Do not send revisions.
+      'revision_uid',
+      'revision_translation_affected',
+      'revision_timestamp',
 
-        // Do not include comments.
-        'comment',
-        'comment_count',
-        'comment_count_new',
-      ],
+      // Translation fields.
+      'content_translation_outdated',
+      'content_translation_source',
+      'default_langcode',
 
-      // Excluded fields for nodes.
-      'node' => [
-        // In the cases of nodes, exclude the revision ID.
-        'vid',
-
-        // Getting rid of workflow fields.
-        'status',
-        'sticky',
-        'promote',
-      ],
-    ];
-
-    // Provide excluded properties per entity type.
-    $entity_type_id = $entity->getEntityTypeId();
-    $excluded = array_merge($excluded_fields['global'], isset($excluded_fields[$entity_type_id]) ? $excluded_fields[$entity_type_id] : []);
+      // Do not include comments.
+      'comment',
+      'comment_count',
+      'comment_count_new',
+    );
 
     $excluded_to_alter = array();
 
