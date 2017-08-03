@@ -1,0 +1,91 @@
+language: php
+
+php:
+  - 5.6
+  - 7.0.15
+
+env:
+  - DRUPAL=8.2.x
+  - DRUPAL=8.3.x
+
+dist: trusty
+sudo: required
+
+services:
+  - mysql
+
+mysql:
+  database: drupal
+  username: root
+  encoding: utf8
+
+before_install:
+
+  - sudo mysql -u root -e "SET PASSWORD FOR 'root'@'localhost' = PASSWORD('')"
+  # first clone everything also into a subfolder, via a parent build folder
+  - mkdir ../build
+  - cp -R * ../build/
+  - mv ../build/ ./
+
+  # drop xdebug (need to read this for code coverage)
+  - phpenv config-rm xdebug.ini
+  - alias php="php -d default_socket_timeout=1 -d xdebug.remote_enable=0"
+  - composer self-update
+
+  # items for phpcs
+  - composer require --dev drupal/coder ^8.2@stable
+  - composer install
+  - vendor/bin/phpcs --config-set installed_paths vendor/drupal/coder/coder_sniffer
+
+  # drush
+  - composer global require drush/drush:8.*
+  # add composer's global bin directory to the path
+  # see: https://github.com/drush-ops/drush#install---composer
+  - export PATH="`composer global config bin-dir --absolute`:$PATH"
+  # debug
+  - composer global config bin-dir --absolute
+
+install:
+  - if [[ $DRUPAL == '8.2.x' ]]; then composer create-project acquia/lightning-project:8.2.0 drupal --no-interaction --no-install; fi
+  - if [[ $DRUPAL == '8.3.x' ]]; then composer create-project acquia/lightning-project:^8.1.0 drupal --no-interaction --no-install; fi
+  - cd drupal
+  # see https://github.com/drupal-composer/drupal-project/issues/175
+  - composer config repositories.acquia_contenthub path ../build
+  - composer config repositories.acquia_contenthub.symlink false
+  - composer config --unset repositories.0
+  - composer config repositories.drupal composer https://packages.drupal.org/8
+  - composer require drupal/core:$DRUPAL --no-update
+  - if [[ $DRUPAL == '8.2.x' ]]; then composer require drupal/search_api:1.0.0-beta4 --no-update; fi
+  - composer require drupal/acquia_contenthub:*
+  - cat composer.json
+    # Adding paragraphs contrib module.
+  - composer require drupal/entity_reference_revisions:1.0 --profile
+  - composer require drupal/paragraphs:1.0 --profile
+  - composer update
+  - composer install
+  # Tweak PHP configuration.
+  - echo 'sendmail_path = /bin/true' >> drupal.php.ini;
+  - phpenv config-add drupal.php.ini
+  - phpenv rehash
+
+  - cd docroot
+  - drush site-install lightning --db-url=mysql://root:@127.0.0.1/drupal --yes install_configure_form.update_status_module='array(FALSE,FALSE)'
+  - cd ../..
+
+before_script:
+  # add always_populate_raw_post_data=-1 to php.ini
+  - echo "always_populate_raw_post_data=-1" >> ~/.phpenv/versions/$(phpenv version-name)/etc/php.ini
+
+script:
+  - vendor/bin/phpcs --standard=Drupal --warning-severity=2 --extensions=php,module,inc,install,test,profile,theme,js,css,info,txt,md --ignore=ember/assets ./build
+  - cd drupal/docroot
+  - mkdir themes
+  - cd core
+  - phpunit --debug --group acquia_contenthub
+  - cd ..
+  # fix this first: The always_populate_raw_post_data PHP setting should be set to -1
+  #- drush pm-enable acquia_contenthub_subscriber -y
+  - drush pm-enable simpletest -y
+  - nohup php -S localhost:8080 > /dev/null 2>&1 &
+  - php core/scripts/run-tests.sh --php /home/travis/.phpenv/shims/php --verbose --url http://localhost:8080 --module acquia_contenthub
+  - php core/scripts/run-tests.sh --php /home/travis/.phpenv/shims/php --verbose --url http://localhost:8080 --module acquia_contenthub_subscriber
