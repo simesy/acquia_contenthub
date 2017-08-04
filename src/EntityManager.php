@@ -17,6 +17,7 @@ use GuzzleHttp\Exception\RequestException;
 use Drupal\Core\StringTranslation\StringTranslationTrait;
 use Drupal\node\NodeInterface;
 use Drupal\paragraphs\ParagraphInterface;
+use Drupal\Core\Entity\ContentEntityInterface;
 
 /**
  * Provides a service for managing entity actions for Content Hub.
@@ -154,6 +155,7 @@ class EntityManager {
     if (!$this->isEligibleEntity($entity)) {
       return;
     }
+
     // Register shutdown function.
     $this->registerShutdownFunction();
 
@@ -169,13 +171,10 @@ class EntityManager {
       }
       // If "published to unpublished", unexport it and its old descendants.
       if ($old_is_published && !$new_is_published) {
-        $unexporting_entities += $entity->original->referencedEntities();
-      }
-      // If "unpublished to published", export it and its new descendants.
-      if (!$old_is_published && $new_is_published) {
-        $exporting_entities += $entity->referencedEntities();
+        $unexporting_entities += $this->getReferencedEntities($entity->original);
       }
     }
+    $exporting_entities += $this->getReferencedEntities($entity);
 
     // If "to published", we have to move any disassociated entities exporting
     // list to unexporting list.
@@ -186,7 +185,7 @@ class EntityManager {
         $exporting_entities_uuids[$exporting_entity->uuid()] = TRUE;
       }
 
-      $exported_entities = $entity->original->referencedEntities();
+      $exported_entities = $this->getReferencedEntities($entity->original);
       // For each exported entity, check if it still remains associated.
       foreach ($exported_entities as $key => $exported_entity) {
         // If remain associated, leave it alone.
@@ -597,15 +596,7 @@ class EntityManager {
   public function getAllowedEntityTypes() {
     // List of entities that are excluded from displaying on
     // entity configuration page and will not be pushed to Content Hub.
-    $excluded_types = [
-      'comment',
-      'user',
-      'contact_message',
-      'shortcut',
-      'menu_link_content',
-      'user',
-    ];
-
+    $excluded_types = $this->getExcludedContentEntityTypeIds();
     $types = $this->entityTypeManager->getDefinitions();
     $entity_types = [];
     foreach ($types as $type => $entity) {
@@ -628,6 +619,68 @@ class EntityManager {
     }
     $entity_types = array_diff_key($entity_types, $excluded_types);
     return $entity_types;
+  }
+
+  /**
+   * List of Content Entity Type Ids that are excluded from Content Hub.
+   *
+   * @return array
+   *   List of content entity type IDs.
+   */
+  private function getExcludedContentEntityTypeIds() {
+    return [
+      'comment',
+      'user',
+      'contact_message',
+      'shortcut',
+      'menu_link_content',
+      'user',
+      'scheduled_update',
+      'search_api_task',
+    ];
+  }
+
+  /**
+   * Checks whether the current entity is supported by Content Hub.
+   *
+   * @param \Drupal\Core\Entity\EntityInterface $entity
+   *   The entity.
+   *
+   * @return bool
+   *   TRUE if it is a supported entity, FALSE otherwise.
+   */
+  private function isSupportedContentHubEntity(EntityInterface $entity) {
+    // If the entity is not a Content Entity then it is not supported.
+    if (!($entity instanceof ContentEntityInterface)) {
+      return FALSE;
+    }
+
+    // From all content entities, some of them are excluded.
+    $excluded_types = $this->getExcludedContentEntityTypeIds();
+    if (in_array($entity->getEntityTypeId(), $excluded_types)) {
+      return FALSE;
+    }
+
+    return TRUE;
+  }
+
+  /**
+   * Obtains a list of referenced eligible Content Hub Entities.
+   *
+   * @param \Drupal\Core\Entity\EntityInterface $entity
+   *   An entity to check for references.
+   *
+   * @return \Drupal\Core\Entity\EntityInterface[]
+   *   An array of all the referenced entities
+   */
+  private function getReferencedEntities(EntityInterface $entity) {
+    $referenced_entities = $entity->referencedEntities();
+    foreach ($referenced_entities as $key => $referenced_entity) {
+      if (!$this->isSupportedContentHubEntity($referenced_entity)) {
+        unset($referenced_entities[$key]);
+      }
+    }
+    return $referenced_entities;
   }
 
   /**

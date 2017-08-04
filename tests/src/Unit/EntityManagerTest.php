@@ -118,6 +118,27 @@ class EntityManagerTest extends UnitTestCase {
   }
 
   /**
+   * Call protected/private method of a class.
+   *
+   * @param object &$object
+   *   Instantiated object that we will run method on.
+   * @param string $methodName
+   *   Method name to call.
+   * @param array $parameters
+   *   Array of parameters to pass into method.
+   *
+   * @return mixed
+   *   Method return.
+   */
+  public function invokeMethod(&$object, $methodName, array $parameters = []) {
+    $reflection = new \ReflectionClass(get_class($object));
+    $method = $reflection->getMethod($methodName);
+    $method->setAccessible(TRUE);
+
+    return $method->invokeArgs($object, $parameters);
+  }
+
+  /**
    * Builds a ContentHubEntityTypeConfig entity.
    *
    * @param string $id
@@ -268,6 +289,39 @@ class EntityManagerTest extends UnitTestCase {
       ],
     ];
     $this->assertEquals($expected_entity_types, $entity_types);
+  }
+
+  /**
+   * Test for isSupportedContentHubEntity() method.
+   *
+   * @covers ::isSupportedContentHubEntity
+   */
+  public function testSupportedContentHubEntity() {
+    $entity_manager = new EntityManager($this->loggerFactory, $this->configFactory, $this->clientManager, $this->contentHubEntitiesTracking, $this->entityTypeManager, $this->entityTypeBundleInfoManager, $this->kernel);
+
+    // Defining a Content Entity.
+    $enabled_methods = [
+      'getEntityTypeId',
+    ];
+    $content_entity = $this->getMockBuilder('Drupal\Core\Entity\ContentEntityBase')
+      ->disableOriginalConstructor()
+      ->setMethods($enabled_methods)
+      ->getMockForAbstractClass();
+    // Testing node is a supported Content Hub entity.
+    $content_entity->expects($this->at(0))
+      ->method('getEntityTypeId')
+      ->willReturn('node');
+    // Testing taxonomy_term is a supported Content Hub entity.
+    $content_entity->expects($this->at(1))
+      ->method('getEntityTypeId')
+      ->willReturn('taxonomy_term');
+    // Testing user is not a supported Content Hub entity.
+    $content_entity->expects($this->at(2))
+      ->method('getEntityTypeId')
+      ->willReturn('user');
+    $this->assertTrue($this->invokeMethod($entity_manager, 'isSupportedContentHubEntity', [$content_entity]));
+    $this->assertTrue($this->invokeMethod($entity_manager, 'isSupportedContentHubEntity', [$content_entity]));
+    $this->assertFalse($this->invokeMethod($entity_manager, 'isSupportedContentHubEntity', [$content_entity]));
   }
 
   /**
