@@ -216,6 +216,9 @@ class ImportEntityManager {
    *   TRUE if field have link to ConfigEntityInterface entity, FALSE otherwise.
    */
   private function isFieldReferencedToSubclassOf(EntityInterface $entity, $field_name, $subclass = '\Drupal\Core\Config\Entity\ConfigEntityInterface') {
+    if (empty($entity) || empty($field_name)) {
+      return FALSE;
+    }
     $field_type = $entity->getFieldDefinition($field_name)->getType();
 
     if ($field_type == 'entity_reference') {

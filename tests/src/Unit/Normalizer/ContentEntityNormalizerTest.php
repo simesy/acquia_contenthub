@@ -8,6 +8,8 @@ use Drupal\acquia_contenthub\Session\ContentHubUserSession;
 use Drupal\Core\Session\AccountInterface;
 use Drupal\Tests\UnitTestCase;
 
+require_once __DIR__ . '/../Polyfill/Drupal.php';
+
 /**
  * PHPUnit test for the ContentEntityNormalizer class.
  *
@@ -668,6 +670,42 @@ class ContentEntityNormalizerTest extends UnitTestCase {
   }
 
   /**
+   * Tests the normalize() method for image references.
+   *
+   * Tests 1 entity reference field and checks if it appears in the normalized
+   * result. It should return the normalized image, including alt/title
+   * attributes.
+   *
+   * @covers ::normalize
+   * @covers ::addFieldsToContentHubEntity
+   */
+  public function testNormalizeImageReferenceField() {
+    $this->mockContainerResponseForNormalize();
+    $definitions = [
+      'field_image' => $this->createMockImageEntityReferenceFieldItemList('field_image', TRUE, $this->userContext),
+    ];
+
+    // Set our Serializer and expected serialized return value for the given
+    // fields.
+    $serializer = $this->getFieldsSerializer($definitions, $this->userContext);
+    $this->contentEntityNormalizer->setSerializer($serializer);
+
+    // Create our Content Entity.
+    $content_entity_mock = $this->createMockForContentEntity($definitions, ['en']);
+
+    // Normalize the Content Entity with the class that we are testing.
+    $normalized = $this->contentEntityNormalizer->normalize($content_entity_mock, 'acquia_contenthub_cdf');
+
+    // Check if valid result.
+    $this->doTestValidResultForOneEntity($normalized);
+    // Get our Content Hub Entity out of the result.
+    $normalized_entity = $this->getContentHubEntityFromResult($normalized);
+
+    // Check if the field has the given value.
+    $this->assertEquals($normalized_entity->getAttribute('field_image')->getValues(), ['en' => [0 => '{"alt":"test-alt-image-value","title":"test-alt-image-text","target_uuid":"[test-uuid-image-1]"}']]);
+  }
+
+  /**
    * Tests the normalize() method.
    *
    * Tests 1 entity reference field and checks if it appears in the normalized
@@ -985,6 +1023,55 @@ class ContentEntityNormalizerTest extends UnitTestCase {
     $mock->method('getFieldDefinition')->willReturn($field_def);
     $mock->method('referencedEntities')->willReturn($referenced_entities);
 
+    return $mock;
+  }
+
+  /**
+   * Creates a mock field entity reference field item list with an image item.
+   *
+   * @param string $name
+   *   Name of the mock field.
+   * @param bool $access
+   *   Defines whether anyone has access to this field or not.
+   * @param bool $user_context
+   *   The user context used to view the field.
+   *
+   * @return \Drupal\Core\Field\FieldItemListInterface|\PHPUnit_Framework_MockObject_MockObject
+   *   The mocked field items.
+   */
+  protected function createMockImageEntityReferenceFieldItemList($name, $access = TRUE, $user_context = NULL) {
+    $mock = $this->getMock('Drupal\Core\Field\EntityReferenceFieldItemListInterface');
+    $mock->method('access')
+      ->with('view', $user_context)
+      ->will($this->returnValue($access));
+
+    $field_def = $this->getMock('\Drupal\Core\Field\FieldDefinitionInterface');
+    $field_def->method('getName')->willReturn($name);
+    $field_def->method('getType')->willReturn('image');
+    $mock->method('getValue')->willReturn([
+      0 => [
+        'target_id' => 'test-id-image-1',
+        'alt' => 'test-alt-image-value',
+        'title' => 'test-alt-image-text',
+        'width' => '100',
+        'height' => '100',
+      ],
+    ]);
+
+    $referenced_entities = [];
+    $methods = [
+      'id',
+      'uuid',
+      'getFileUri',
+    ];
+    $image1 = $this->getMockBuilder('\Drupal\image\Plugin\Field\FieldType\ImageItem')->disableOriginalConstructor()->setMethods($methods)->getMock();
+    $image1->method('id')->willReturn('test-id-image-1');
+    $image1->method('uuid')->willReturn('test-uuid-image-1');
+    $image1->method('getFileUri')->willReturn('public://test-image-1.jpg');
+    $referenced_entities[] = $image1;
+
+    $mock->method('getFieldDefinition')->willReturn($field_def);
+    $mock->method('referencedEntities')->willReturn($referenced_entities);
     return $mock;
   }
 

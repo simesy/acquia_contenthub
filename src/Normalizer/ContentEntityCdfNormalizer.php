@@ -452,14 +452,21 @@ class ContentEntityCdfNormalizer extends NormalizerBase {
           elseif (in_array($field_type, $file_types)) {
             // If this is a file type, then add the asset to the CDF.
             $uuid_token = '[' . $referenced_entity->uuid() . ']';
-            $asset_url = file_create_url($entity->{$name}[$key]->entity->getFileUri());
+            $asset_url = file_create_url($referenced_entity->getFileUri());
             $asset = new Asset();
             $asset->setUrl($asset_url);
             $asset->setReplaceToken($uuid_token);
             $contenthub_entity->addAsset($asset);
 
             // Now add the value.
-            $values[$langcode][] = $uuid_token;
+            // Notice that we are including the "alt" and "title" attributes
+            // from the file entity in the field data.
+            $data = [
+              'alt' => isset($items[$key]['alt']) ? $items[$key]['alt'] : '',
+              'title' => isset($items[$key]['title']) ? $items[$key]['title'] : '',
+              'target_uuid' => $uuid_token,
+            ];
+            $values[$langcode][] = json_encode($data, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT);
           }
           else {
             $values[$langcode][] = $referenced_entity->uuid();
@@ -708,16 +715,37 @@ class ContentEntityCdfNormalizer extends NormalizerBase {
       if (isset($field)) {
         // Try to map it to a known field type.
         $field_type = $field->getFieldDefinition()->getType();
+        $settings = $field->getFieldDefinition()->getSettings();
         $value = $attribute['value'][$langcode];
         $field->setValue([]);
 
         if ($field instanceof EntityReferenceFieldItemListInterface) {
+          $entity_type = $settings['target_type'];
+          $field_item = NULL;
           foreach ($value as $item) {
-            $uuid = in_array($field_type, $file_types) ? $this->removeBracketsUuid($item) : $item;
-            $entity_type = $field->getFieldDefinition()->getSettings()['target_type'];
-            $referenced_entity = $this->entityRepository->loadEntityByUuid($entity_type, $uuid);
-            if ($referenced_entity) {
-              $field->appendItem($referenced_entity);
+            $item = json_decode($item, TRUE) ?: $item;
+            if (in_array($field_type, $file_types)) {
+              if (is_array($item) && isset($item['target_uuid'])) {
+                $uuid = $this->removeBracketsUuid($item['target_uuid']);
+                $referenced_entity = $this->entityRepository->loadEntityByUuid($entity_type, $uuid);
+              }
+              else {
+                $uuid = $this->removeBracketsUuid($item);
+                $referenced_entity = $this->entityRepository->loadEntityByUuid($entity_type, $uuid);
+              }
+              $field_item = $referenced_entity ? [
+                'alt' => isset($item['alt']) ? $item['alt'] : ($settings['alt_field_required'] ? $referenced_entity->label() : ''),
+                'title' => isset($item['title']) ? $item['title'] : ($settings['title_field_required'] ? $referenced_entity->label() : ''),
+                'target_id' => $referenced_entity->id(),
+              ] : NULL;
+            }
+            else {
+              $uuid = $item;
+              $referenced_entity = $this->entityRepository->loadEntityByUuid($entity_type, $uuid);
+              $field_item = $referenced_entity;
+            }
+            if ($field_item) {
+              $field->appendItem($field_item);
             }
           }
         }
