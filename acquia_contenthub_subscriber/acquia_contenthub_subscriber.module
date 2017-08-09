@@ -5,6 +5,7 @@
  * Handles Content Hub Content Subscriptions and Updates.
  */
 
+use Drupal\acquia_contenthub\ContentHubEntityDependency;
 use Drupal\acquia_contenthub_subscriber\ContentHubFilterInterface;
 use Drupal\acquia_contenthub\ImportEntityManager;
 use Drupal\user\Entity\User;
@@ -29,7 +30,13 @@ function acquia_contenthub_subscriber_acquia_contenthub_process_webhook_alter($w
   // Process every asset that comes in the webhook, other than the
   // post dependencies.
   foreach ($assets as $asset) {
-    // @TODO: We need to exclude post-dependencies (entity dependent).
+
+    // We need to exclude post-dependencies (dependent entities).
+    $dependent_entity_type_ids = ContentHubEntityDependency::getPostDependencyEntityTypes();
+    if (in_array($asset['type'], $dependent_entity_type_ids)) {
+      continue;
+    }
+
     // New entities are handled by Content Hub Filters.
     if (!$contenthub_entity_tracking->loadByUuid($asset['uuid'])) {
       acquia_contenthub_subscriber_process_filters($import_entity_manager, $filters, $asset);

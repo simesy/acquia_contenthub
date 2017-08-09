@@ -998,6 +998,12 @@ class ContentEntityCdfNormalizer extends NormalizerBase {
             // If it doesn't have a status attribute, set it as 0 (unpublished).
             $status = $contenthub_entity->getAttribute('status') ? $contenthub_entity->getAttribute('status')['value'][$language] : 0;
             $values['status'] = $status ? $status : 0;
+
+            // Check if Workbench Moderation is enabled.
+            $workbench_moderation_enabled = \Drupal::moduleHandler()->moduleExists('workbench_moderation');
+            if ($status && $workbench_moderation_enabled) {
+              $values['moderation_state'] = 'published';
+            }
           }
           break;
 
