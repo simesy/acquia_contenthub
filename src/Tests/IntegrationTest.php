@@ -371,26 +371,6 @@ class IntegrationTest extends WebTestBase {
   }
 
   /**
-   * Sets a role to be used in CDF render.
-   *
-   * @param string $role
-   *   The role.
-   */
-  public function setRoleFor($role) {
-    $this->drupalGet('admin/config/services/acquia-contenthub/configuration');
-    $this->assertResponse(200);
-
-    $edit = [
-      'user_role' => $role,
-    ];
-    $this->drupalPostForm(NULL, $edit, $this->t('Save configuration'));
-    $this->assertResponse(200);
-
-    $this->drupalGet('admin/config/services/acquia-contenthub/configuration');
-    $this->assertResponse(200);
-  }
-
-  /**
    * Configure and use content hub preview image style.
    */
   public function configureAndUsePreviewImageStyle() {
