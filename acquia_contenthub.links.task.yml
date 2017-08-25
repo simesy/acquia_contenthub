@@ -12,3 +12,8 @@ acquia_contenthub.entity_config:
   title: 'Entity Configuration'
   weight: 100
   base_route: acquia_contenthub.admin_settings
+acquia_contenthub.import_queue:
+  route_name: acquia_contenthub.import_queue
+  title: 'Import queue'
+  weight: 200
+  base_route: acquia_contenthub.admin_settings

@@ -2,6 +2,8 @@
 
 namespace Drupal\acquia_contenthub;
 
+use Drupal\acquia_contenthub\QueueItem\ImportQueueItem;
+use Drupal\Core\Queue\QueueFactory;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\Serializer\SerializerInterface;
@@ -82,9 +84,17 @@ class ImportEntityManager {
   private $entityManager;
 
   /**
+   * The queue factory.
+   *
+   * @var \Drupal\Core\Queue\QueueFactory
+   */
+  private $queue;
+
+  /**
    * Implements the static interface create method.
    */
   public static function create(ContainerInterface $container) {
+    kint($container->get('queue'));
     return new static(
       $container->get('database'),
       $container->get('logger.factory'),
@@ -94,7 +104,8 @@ class ImportEntityManager {
       $container->get('acquia_contenthub.acquia_contenthub_entities_tracking'),
       $container->get('diff.entity_comparison'),
       $container->get('acquia_contenthub.entity_manager'),
-      $container->get('string_translation')
+      $container->get('string_translation'),
+      $container->get('queue')
     );
   }
 
@@ -119,8 +130,10 @@ class ImportEntityManager {
    *   The entity manager for Content Hub.
    * @param \Drupal\Core\StringTranslation\TranslationInterface $string_translation
    *   The string translation service.
+   * @param \Drupal\Core\Queue\QueueFactory $queue_factory
+   *   The Queue Factory.
    */
-  public function __construct(Connection $database, LoggerChannelFactoryInterface $logger_factory, SerializerInterface $serializer, EntityRepositoryInterface $entity_repository, ClientManagerInterface $client_manager, ContentHubEntitiesTracking $entities_tracking, DiffEntityComparison $entity_comparison, EntityManager $entity_manager, TranslationInterface $string_translation) {
+  public function __construct(Connection $database, LoggerChannelFactoryInterface $logger_factory, SerializerInterface $serializer, EntityRepositoryInterface $entity_repository, ClientManagerInterface $client_manager, ContentHubEntitiesTracking $entities_tracking, DiffEntityComparison $entity_comparison, EntityManager $entity_manager, TranslationInterface $string_translation, QueueFactory $queue_factory) {
     $this->database = $database;
     $this->loggerFactory = $logger_factory;
     $this->serializer = $serializer;
@@ -130,6 +143,7 @@ class ImportEntityManager {
     $this->diffEntityComparison = $entity_comparison;
     $this->entityManager = $entity_manager;
     $this->stringTranslation = $string_translation;
+    $this->queue = $queue_factory;
   }
 
   /**
@@ -356,6 +370,28 @@ class ImportEntityManager {
       $dependencies[$uuid] = $content_hub_dependent_entity;
     }
     return $dependencies;
+  }
+
+  /**
+   * Import an entity.
+   *
+   * @param string $uuid
+   *   The UUID of the Entity to save.
+   * @param bool $include_dependencies
+   *   TRUE if we want to save all its dependencies, FALSE otherwise.
+   * @param string $author
+   *   The UUID of the author (user) that will own the entity.
+   * @param int $status
+   *   The publishing status of the entity (Applies to nodes).
+   *
+   * @return \Symfony\Component\HttpFoundation\JsonResponse
+   *   A JSON Response.
+   */
+  public function import($uuid, $include_dependencies = TRUE, $author = NULL, $status = 0) {
+    if (\Drupal::config('acquia_contenthub.entity_config')->get('import_with_queue')) {
+      return $this->addEntityToImportQueue($uuid, $include_dependencies, $author, $status);
+    }
+    return $this->importRemoteEntity($uuid, $include_dependencies, $author, $status);
   }
 
   /**
@@ -738,6 +774,33 @@ class ImportEntityManager {
       return;
     }
     $imported_entity->delete();
+  }
+
+  /**
+   * Add the UUID to the import queue.
+   *
+   * @param string $uuid
+   *   The UUID of the Entity to save.
+   * @param bool $include_dependencies
+   *   TRUE if we want to save all its dependencies, FALSE otherwise.
+   * @param string $author
+   *   The UUID of the author (user) that will own the entity.
+   * @param int $status
+   *   The publishing status of the entity (Applies to nodes).
+   *
+   * @return \Symfony\Component\HttpFoundation\JsonResponse
+   *   A valid response.
+   */
+  public function addEntityToImportQueue($uuid, $include_dependencies = TRUE, $author = NULL, $status = 0) {
+    $item = (object) ['data' => []];
+    $item->data[] = new ImportQueueItem($uuid, $include_dependencies, $author, $status);
+    $queue = $this->queue->get('acquia_contenthub_import_queue');
+
+    if ($queue->createItem($item)) {
+      return new JsonResponse(['status' => 200, 'message' => $uuid . ' added to the queue'], 200);
+    }
+
+    return $this->jsonErrorResponseMessage('Unable to add ' . $uuid . ' to the import queue', FALSE);
   }
 
 }
