@@ -13,6 +13,9 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Drupal\Component\Serialization\Json;
 use Drupal\acquia_contenthub\ContentHubEntitiesTracking;
+use Drupal\Core\Session\AccountSwitcherInterface;
+use Drupal\Core\Config\ConfigFactoryInterface;
+use Drupal\acquia_contenthub\Session\ContentHubUserSession;
 
 /**
  * Controller for Content Hub Export Entities using bulk upload.
@@ -57,6 +60,20 @@ class ContentHubEntityExportController extends ControllerBase {
   protected $entityRepository;
 
   /**
+   * The account switcher service.
+   *
+   * @var \Drupal\Core\Session\AccountSwitcherInterface
+   */
+  protected $accountSwitcher;
+
+  /**
+   * The renderer.
+   *
+   * @var \Drupal\Core\Render\RendererInterface
+   */
+  protected $renderer;
+
+  /**
    * Public Constructor.
    *
    * @param \Symfony\Component\HttpKernel\HttpKernelInterface $kernel
@@ -69,13 +86,19 @@ class ContentHubEntityExportController extends ControllerBase {
    *   The table where all entities are tracked.
    * @param \Drupal\Core\Entity\EntityRepositoryInterface $entity_repository
    *   Entity Repository.
+   * @param \Drupal\Core\Session\AccountSwitcherInterface $account_switcher
+   *   The Account Switcher Service.
+   * @param \Drupal\Core\Config\ConfigFactoryInterface $config_factory
+   *   The config factory.
    */
-  public function __construct(HttpKernelInterface $kernel, ClientManagerInterface $client_manager, ContentHubSubscription $contenthub_subscription, ContentHubEntitiesTracking $contenthub_entities_tracking, EntityRepositoryInterface $entity_repository) {
+  public function __construct(HttpKernelInterface $kernel, ClientManagerInterface $client_manager, ContentHubSubscription $contenthub_subscription, ContentHubEntitiesTracking $contenthub_entities_tracking, EntityRepositoryInterface $entity_repository, AccountSwitcherInterface $account_switcher, ConfigFactoryInterface $config_factory) {
     $this->kernel = $kernel;
     $this->clientManager = $client_manager;
     $this->contentHubSubscription = $contenthub_subscription;
     $this->contentHubEntitiesTracking = $contenthub_entities_tracking;
     $this->entityRepository = $entity_repository;
+    $this->accountSwitcher = $account_switcher;
+    $this->renderUser = new ContentHubUserSession($config_factory->get('acquia_contenthub.entity_config')->get('user_role'));
   }
 
   /**
@@ -87,7 +110,9 @@ class ContentHubEntityExportController extends ControllerBase {
       $container->get('acquia_contenthub.client_manager'),
       $container->get('acquia_contenthub.acquia_contenthub_subscription'),
       $container->get('acquia_contenthub.acquia_contenthub_entities_tracking'),
-      $container->get('entity.repository')
+      $container->get('entity.repository'),
+      $container->get('account_switcher'),
+      $container->get('config.factory')
     );
   }
 
@@ -106,6 +131,10 @@ class ContentHubEntityExportController extends ControllerBase {
    */
   public function getEntityCdfByInternalRequest($entity_type, $entity_id, $include_references = TRUE) {
     global $base_path;
+
+    // Creating a fake user account to give as context to the normalization.
+    $this->accountSwitcher->switchTo($this->renderUser);
+
     try {
       $params = [
         'entity_type' => $entity_type,
@@ -129,9 +158,23 @@ class ContentHubEntityExportController extends ControllerBase {
       $bulk_cdf = Json::decode($entity_cdf_json);
     }
     catch (\Exception $e) {
-      // Do nothing, route does not exist.
+      // Do nothing, route does not exist, just log a message about it.
+      $this->loggerFactory->get('acquia_contenthub')->debug($this->t('Exception: %msg', ['%msg' => $e->getMessage()]));
       $bulk_cdf = [];
     }
+
+    // Restore user account.
+    try {
+      $this->accountSwitcher->switchBack();
+    }
+    catch (\RuntimeException $e) {
+      // If it is not possible to switch accounts, just log a message about it.
+      $this->loggerFactory->get('acquia_contenthub')->debug($this->t("Not able to switch back from Content Hub user's account because it was never changed. Current user ID: %id", [
+        '%id' => \Drupal::currentUser()->id(),
+      ]));
+    }
+
+    // Return CDF.
     return empty($bulk_cdf) ? ['entities' => []] : $bulk_cdf;
   }
 

@@ -61,6 +61,7 @@ install:
     # Adding paragraphs contrib module.
   - composer require drupal/entity_reference_revisions:1.0 --profile
   - composer require drupal/paragraphs:1.0 --profile
+  - composer require drupal/field_permissions --profile
   - composer update
   - composer install
   # Tweak PHP configuration.
@@ -86,6 +87,6 @@ script:
   # fix this first: The always_populate_raw_post_data PHP setting should be set to -1
   #- drush pm-enable acquia_contenthub_subscriber -y
   - drush pm-enable simpletest -y
-  - nohup php -S localhost:8080 > /dev/null 2>&1 &
+  - nohup drush runserver localhost:8080 > /dev/null 2>&1 &
   - php core/scripts/run-tests.sh --php /home/travis/.phpenv/shims/php --verbose --url http://localhost:8080 --module acquia_contenthub
   - php core/scripts/run-tests.sh --php /home/travis/.phpenv/shims/php --verbose --url http://localhost:8080 --module acquia_contenthub_subscriber
