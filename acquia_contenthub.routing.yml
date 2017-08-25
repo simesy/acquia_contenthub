@@ -63,3 +63,18 @@ acquia_contenthub.acquia_contenthub_bulk_cdf:
 
 route_callbacks:
   - 'acquia_contenthub.resource_routes:routes'
+
+acquia_contenthub.import_queue:
+  path: '/admin/config/services/acquia-contenthub/import-queue'
+  defaults:
+    _form: '\Drupal\acquia_contenthub\Form\ContentHubImportQueueForm'
+    _title: 'Import Queue'
+  requirements:
+    _permission: 'administer acquia content hub'
+
+acquia_contenthub.import_queue_batch:
+  path: '/admin/config/services/acquia-contenthub/import-process'
+  defaults:
+    _controller: '\Drupal\acquia_contenthub\Controller\ContentHubImportQueue::process'
+  requirements:
+    _permission: 'administer acquia content hub'

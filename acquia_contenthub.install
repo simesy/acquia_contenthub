@@ -195,3 +195,20 @@ function acquia_contenthub_update_8203() {
   }
   $config->save();
 }
+
+/**
+ * Set default values for import queue in acquia_contenthub.entity_config.
+ */
+function acquia_contenthub_update_8302() {
+  $config = \Drupal::configFactory()->getEditable('acquia_contenthub.entity_config');
+  if (!$config->get('import_with_queue')) {
+    $config->set('import_with_queue', FALSE);
+  }
+  if (!$config->get('import_queue_batch_size')) {
+    $config->set('import_queue_batch_size', 1);
+  }
+  if (!$config->get('import_queue_wait_time')) {
+    $config->set('import_queue_wait_time', 3);
+  }
+  $config->save();
+}

@@ -4,6 +4,8 @@ namespace Drupal\Tests\acquia_contenthub\Unit;
 
 use Drupal\Tests\UnitTestCase;
 use Drupal\acquia_contenthub\ImportEntityManager;
+use Drupal\acquia_contenthub\QueueItem\ImportQueueItem;
+use Drupal\Core\DependencyInjection\ContainerBuilder;
 
 require_once __DIR__ . '/Polyfill/Drupal.php';
 
@@ -26,7 +28,7 @@ class ImportEntityManagerTest extends UnitTestCase {
   /**
    * Diff module's entity comparison service.
    *
-   * @var Drupal\diff\DiffEntityComparison|\PHPUnit_Framework_MockObject_MockObject
+   * @var \Drupal\diff\DiffEntityComparison|\PHPUnit_Framework_MockObject_MockObject
    */
   private $diffEntityComparison;
 
@@ -43,6 +45,20 @@ class ImportEntityManagerTest extends UnitTestCase {
    * @var \Drupal\acquia_contenthub\EntityManager
    */
   private $entityManager;
+
+  /**
+   * The Queue Factory.
+   *
+   * @var \Drupal\Core\Queue\QueueFactory
+   */
+  private $queueFactory;
+
+  /**
+   * The Import Queue.
+   *
+   * @var \Drupal\Core\Queue\QueueFactory
+   */
+  private $importQueue;
 
   /**
    * {@inheritdoc}
@@ -71,6 +87,12 @@ class ImportEntityManagerTest extends UnitTestCase {
     $this->translation_manager = $this->getMockBuilder('Drupal\Core\StringTranslation\TranslationInterface')
       ->disableOriginalConstructor()
       ->getMock();
+    $this->importQueue = $this->getMock('\Drupal\Core\Queue\QueueInterface');
+    $this->queueFactory = $this->getMockBuilder('Drupal\Core\Queue\QueueFactory')
+      ->disableOriginalConstructor()
+      ->setMethods(['get'])
+      ->getMock();
+    $this->queueFactory->method('get')->with('acquia_contenthub_import_queue')->willReturn($this->importQueue);
 
     $this->importEntityManager = new ImportEntityManager(
       $this->database,
@@ -81,7 +103,8 @@ class ImportEntityManagerTest extends UnitTestCase {
       $this->contentHubEntitiesTracking,
       $this->diffEntityComparison,
       $this->entityManager,
-      $this->translation_manager
+      $this->translation_manager,
+      $this->queueFactory
     );
   }
 
@@ -911,6 +934,97 @@ class ImportEntityManagerTest extends UnitTestCase {
     $this->contentHubEntitiesTracking->expects($this->once())
       ->method('save');
     $this->importEntityManager->entityPresave($node);
+  }
+
+  /**
+   * Provide some UUID values.
+   *
+   * @return array
+   *   A list of UUIDs.
+   */
+  public function provideEntityUuid() {
+    return [
+      ['00000000-0000-0000-0000-000000000000'],
+      ['00000000-0001-0000-0000-000000000000'],
+      ['00000000-0002-0000-0000-000000000000'],
+      ['00000000-0003-0000-0000-000000000000'],
+    ];
+  }
+
+  /**
+   * Build a container that has some configuration available.
+   *
+   * @param array $config
+   *   THe container config array.
+   */
+  public function buildConfigContainer(array $config = []) {
+    $container = new ContainerBuilder();
+    $config = $this->getConfigFactoryStub($config);
+    $container->set('config.factory', $config);
+    \Drupal::unsetContainer();
+    \Drupal::setContainer($container);
+  }
+
+  /**
+   * Tests the ability to add an entity to the import queue.
+   *
+   * @covers ::addEntityToImportQueue
+   * @dataProvider provideEntityUuid
+   */
+  public function testAddEntityToQueue($uuid) {
+    $item = (object) ['data' => []];
+    $item->data[] = new ImportQueueItem($uuid, TRUE, NULL, 0);
+    $this->importQueue->method('createItem')->with($item)->willReturn(TRUE);
+
+    $return = $this->importEntityManager->addEntityToImportQueue($uuid);
+    $this->assertEquals(200, $return->getStatusCode());
+  }
+
+  /**
+   * Ensure that if configuration is set the entity will be added to the queue.
+   *
+   * @covers ::import
+   * @dataProvider provideEntityUuid
+   */
+  public function testImportWithQueue($uuid = '') {
+    $importEntityManager = $this->getMockBuilder(ImportEntityManager::class)
+      ->disableOriginalConstructor()
+      ->setMethods(['addEntityToImportQueue', 'importRemoteEntity'])
+      ->getMock();
+
+    $this->buildConfigContainer(['acquia_contenthub.entity_config' => ['import_with_queue' => TRUE]]);
+
+    $importEntityManager->expects($this->once())
+      ->method('addEntityToImportQueue')
+      ->with($uuid);
+
+    $importEntityManager->expects($this->never())->method('importRemoteEntity');
+
+    $importEntityManager->import($uuid);
+  }
+
+  /**
+   * Ensure if configuration is correct entity will be imported immediately.
+   *
+   * @covers ::import
+   * @dataProvider provideEntityUuid
+   */
+  public function testImportWithoutQueue($uuid = '') {
+    $importEntityManager = $this->getMockBuilder(ImportEntityManager::class)
+      ->disableOriginalConstructor()
+      ->setMethods(['addEntityToImportQueue', 'importRemoteEntity'])
+      ->getMock();
+
+    $this->buildConfigContainer(['acquia_contenthub.entity_config' => ['import_with_queue' => FALSE]]);
+
+    $importEntityManager->expects($this->once())
+      ->method('importRemoteEntity')
+      ->with($uuid);
+
+    $importEntityManager->expects($this->never())->method('addEntityToImportQueue');
+
+    $importEntityManager->import($uuid);
+
   }
 
 }
