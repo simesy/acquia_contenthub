@@ -406,8 +406,11 @@ class ContentEntityNormalizerTest extends UnitTestCase {
     $this->doTestValidResultForOneEntity($normalized);
     // Get our Content Hub Entity out of the result.
     $normalized_entity = $this->getContentHubEntityFromResult($normalized);
-    // Field created should not be part of the normalizer.
-    $this->assertFalse($normalized_entity->getAttribute('field_1'));
+    // Check if the field has the given value.
+    $expected_output = [
+      'en' => NULL,
+    ];
+    $this->assertEquals($normalized_entity->getAttribute('field_1')->getValues(), $expected_output);
   }
 
   /**
