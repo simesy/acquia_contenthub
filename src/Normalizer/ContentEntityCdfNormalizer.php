@@ -377,10 +377,6 @@ class ContentEntityCdfNormalizer extends NormalizerBase {
       // Get the plain version of the field in regular json.
       $serialized_field = $this->serializer->normalize($field, 'json', $context);
       $items = $serialized_field;
-      // If there's nothing in this field, ignore it.
-      if ($items == NULL) {
-        continue;
-      }
 
       // @TODO: This is to make it work with vocabularies. It should be
       // replaced with appropriate handling of taxonomy vocabulary entities.
@@ -474,16 +470,22 @@ class ContentEntityCdfNormalizer extends NormalizerBase {
         }
       }
       else {
-        // Loop over the items to get the values for each field.
-        foreach ($items as $item) {
-          $keys = array_keys($item);
-          if (count($keys) == 1 && isset($item['value'])) {
-            $value = $item['value'];
+        // If there's nothing in this field, just set it to NULL.
+        if ($items == NULL) {
+          $values[$langcode] = NULL;
+        }
+        else {
+          // Loop over the items to get the values for each field.
+          foreach ($items as $item) {
+            $keys = array_keys($item);
+            if (count($keys) == 1 && isset($item['value'])) {
+              $value = $item['value'];
+            }
+            else {
+              $value = json_encode($item, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT);
+            }
+            $values[$langcode][] = $value;
           }
-          else {
-            $value = json_encode($item, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT);
-          }
-          $values[$langcode][] = $value;
         }
       }
       try {
@@ -906,6 +908,9 @@ class ContentEntityCdfNormalizer extends NormalizerBase {
 
         // Do not include moderation state.
         'moderation_state',
+
+        // Do not include path settings.
+        'path',
       ],
 
       // Excluded fields for nodes.
