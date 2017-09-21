@@ -203,9 +203,10 @@ class ImportEntityManager {
     // Check if the entity has introduced any local changes.
     $field_comparisons = $this->diffEntityComparison->compareRevisions($entity->original, $entity);
     foreach ($field_comparisons as $field_comparison => $field_comparison_value) {
-      list (, $field_comparison_name) = explode($entity->id() . ':' . $entity->getEntityTypeId() . '.', $field_comparison);
+      list ($entity_id, $field_comparison_data) = explode(':', $field_comparison);
+      list ($entity_type_id, $field_comparison_name) = explode('.', $field_comparison_data);
 
-      if ($this->isFieldReferencedToSubclassOf($entity, $field_comparison_name)) {
+      if ($entity_id == $entity->id() && $entity_type_id == $entity->getEntityTypeId() && $this->isFieldReferencedToSubclassOf($entity, $field_comparison_name)) {
         continue;
       }
 

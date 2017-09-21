@@ -420,13 +420,17 @@ class ContentEntityCdfNormalizer extends NormalizerBase {
       $values = [];
       if ($field instanceof EntityReferenceFieldItemListInterface) {
 
-        /** @var \Drupal\Core\Entity\EntityInterface[] $referenced_entities */
-        $referenced_entities = $field->referencedEntities();
-        /*
-         * @todo Should we check the class type here?
-         * I think we need to make sure it is also an entity that we support?
-         * The return value could be anything that is compatible with TypedData.
-         */
+        // Get taxonomy parent terms.
+        if ($name === 'parent' && $entity->getEntityTypeId() === 'taxonomy_term') {
+          $storage = \Drupal::service('entity_type.manager')
+            ->getStorage('taxonomy_term');
+          $referenced_entities = $storage->loadParents($entity->id());
+        }
+        else {
+          /** @var \Drupal\Core\Entity\EntityInterface[] $referenced_entities */
+          $referenced_entities = $field->referencedEntities();
+        }
+
         foreach ($referenced_entities as $key => $referenced_entity) {
           // In the case of images/files, etc... we need to add the assets.
           $file_types = [

@@ -276,11 +276,16 @@ class ContentHubEntityDependency {
    *   The array of attributes to exclude.
    */
   protected function getExcludedAttributesFromDependencies() {
-    return [
-      'author',
-      'parent',
-      'comments',
-    ];
+
+    // Set excludes for all entities.
+    $excludes = ['author', 'comments'];
+
+    // Do not exclude parent attribute for taxonomy_term.
+    if ($this->getEntityType() != 'taxonomy_term') {
+      $excludes[] = 'parent';
+    }
+
+    return $excludes;
   }
 
   /**
