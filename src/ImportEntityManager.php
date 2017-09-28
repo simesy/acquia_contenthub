@@ -13,6 +13,7 @@ use Drupal\Core\Database\Connection;
 use Drupal\Core\Logger\LoggerChannelFactoryInterface;
 use Drupal\Core\Entity\EntityRepositoryInterface;
 use Drupal\Core\Entity\EntityInterface;
+use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\StringTranslation\StringTranslationTrait;
 use Drupal\Core\StringTranslation\TranslationInterface;
 use Drupal\diff\DiffEntityComparison;
@@ -84,6 +85,13 @@ class ImportEntityManager {
   private $entityManager;
 
   /**
+   * The module handler service to create alter hooks.
+   *
+   * @var \Drupal\Core\Extension\ModuleHandlerInterface
+   */
+  protected $moduleHandler;
+
+  /**
    * The queue factory.
    *
    * @var \Drupal\Core\Queue\QueueFactory
@@ -105,7 +113,8 @@ class ImportEntityManager {
       $container->get('diff.entity_comparison'),
       $container->get('acquia_contenthub.entity_manager'),
       $container->get('string_translation'),
-      $container->get('queue')
+      $container->get('queue'),
+      $container->get('module_handler')
     );
   }
 
@@ -133,7 +142,7 @@ class ImportEntityManager {
    * @param \Drupal\Core\Queue\QueueFactory $queue_factory
    *   The Queue Factory.
    */
-  public function __construct(Connection $database, LoggerChannelFactoryInterface $logger_factory, SerializerInterface $serializer, EntityRepositoryInterface $entity_repository, ClientManagerInterface $client_manager, ContentHubEntitiesTracking $entities_tracking, DiffEntityComparison $entity_comparison, EntityManager $entity_manager, TranslationInterface $string_translation, QueueFactory $queue_factory) {
+  public function __construct(Connection $database, LoggerChannelFactoryInterface $logger_factory, SerializerInterface $serializer, EntityRepositoryInterface $entity_repository, ClientManagerInterface $client_manager, ContentHubEntitiesTracking $entities_tracking, DiffEntityComparison $entity_comparison, EntityManager $entity_manager, TranslationInterface $string_translation, QueueFactory $queue_factory, ModuleHandlerInterface $module_handler) {
     $this->database = $database;
     $this->loggerFactory = $logger_factory;
     $this->serializer = $serializer;
@@ -144,6 +153,7 @@ class ImportEntityManager {
     $this->entityManager = $entity_manager;
     $this->stringTranslation = $string_translation;
     $this->queue = $queue_factory;
+    $this->moduleHandler = $module_handler;
   }
 
   /**
@@ -158,8 +168,23 @@ class ImportEntityManager {
    *   TRUE if it finds differences, FALSE otherwise.
    */
   private function compareReferencedEntities(EntityInterface $entity) {
-    $new_references = $entity->referencedEntities();
-    $old_references = $entity->original->referencedEntities();
+
+    // Respect that changes to fields excluded from the CDF should not disable
+    // automatic updates, prune these fields of data for the comparison check.
+    $excluded_fields = [];
+    $this->moduleHandler->alter('acquia_contenthub_exclude_fields', $excluded_fields, $entity);
+    $entity_check = clone($entity);
+    foreach($excluded_fields as $field) {
+      if (isset($entity_check->{$field})) {
+        $entity_check->{$field} = null;
+      }
+      if (isset($entity_check->original->{$field})) {
+        $entity_check->original->{$field} = null;
+      }
+    }
+
+    $new_references = $entity_check->referencedEntities();
+    $old_references = $entity_check->original->referencedEntities();
     $new_uuids = array_map([$this, 'excludeCompareReferencedEntities'], $new_references);
     $old_uuids = array_map([$this, 'excludeCompareReferencedEntities'], $old_references);
     $changes = array_diff($new_uuids, $old_uuids);
@@ -202,11 +227,21 @@ class ImportEntityManager {
   private function compareRevisions(EntityInterface $entity) {
     // Check if the entity has introduced any local changes.
     $field_comparisons = $this->diffEntityComparison->compareRevisions($entity->original, $entity);
+
+    // Respect that changes to fields excluded from the CDF should not disable
+    // automatic updates.
+    $excluded_fields = [];
+    $this->moduleHandler->alter('acquia_contenthub_exclude_fields', $excluded_fields, $entity);
+
     foreach ($field_comparisons as $field_comparison => $field_comparison_value) {
       list ($entity_id, $field_comparison_data) = explode(':', $field_comparison);
       list ($entity_type_id, $field_comparison_name) = explode('.', $field_comparison_data);
 
       if ($entity_id == $entity->id() && $entity_type_id == $entity->getEntityTypeId() && $this->isFieldReferencedToSubclassOf($entity, $field_comparison_name)) {
+        continue;
+      }
+
+      if (array_search($field_comparison_name, $excluded_fields)) {
         continue;
       }
 
