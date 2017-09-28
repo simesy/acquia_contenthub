@@ -694,6 +694,7 @@ class ContentEntityCdfNormalizer extends NormalizerBase {
     // Excluded comes here.
     $excluded_fields = $this->excludedProperties($entity);
     $excluded_fields[] = 'type';
+    $excluded_fields[] = 'bundle';
     // We ignore `langcode` selectively because und i.e LANGCODE_NOT_SPECIFIED
     // and zxx i.e LANGCODE_NOT_APPLICABLE content requires `langcode` field
     // to *not* be excluded for such content to be importable.
