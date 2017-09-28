@@ -1041,9 +1041,24 @@ class ContentEntityCdfNormalizer extends NormalizerBase {
           foreach ($langcodes as $lang) {
             if (isset($attribute['value'][$lang])) {
               $remote_uri = $attribute['value'][$lang];
-              $file_drupal_path = system_retrieve_file($remote_uri, NULL, FALSE);
-              // @TODO: Fix this 'value' key. It should not be like that.
-              $values['uri']['value'] = $file_drupal_path;
+              if ($file_drupal_path = system_retrieve_file($remote_uri, NULL, FALSE)) {
+                $values['uri']['value'] = $file_drupal_path;
+              }
+              else {
+                // If the file URL is not publicly accessible, then this file
+                // entity cannot be created. There is no point in trying to
+                // complete the creation of this entity because it will fail
+                // to be saved in the system.
+                // Return a NULL entity and deal with it afterwards.
+
+                $args = [
+                  '%remote_url' => $remote_uri,
+                ];
+                $message = new FormattableMarkup('There was an error exporting
+                %remote_uri.', $args);
+                $this->loggerFactory->get('acquia_contenthub')->error($message);
+                return NULL;
+              }
             }
           }
           break;

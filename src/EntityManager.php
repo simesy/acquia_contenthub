@@ -479,6 +479,16 @@ class EntityManager {
       return FALSE;
     }
 
+    // If this is a file with status = 0 (TEMPORARY FILE) do not export it.
+    // This is a check to avoid exporting temporal files.
+    if ($entity instanceof FileInterface) {
+      $file_status = $entity->get('status')->getValue();
+      $is_temporary = isset($file_status[0]['value']) ? !$file_status[0]['value'] : 0;
+      if ($is_temporary) {
+        return FALSE;
+      }
+    }
+
     // If the entity has been imported before, then it didn't originate from
     // this site and shouldn't be exported.
     $entity_id = $entity->id();
@@ -493,14 +503,14 @@ class EntityManager {
 
         // We can use this pool of failed entities to display a message to the
         // user about the entities that failed to export.
-        // $args = [
-        // '%type' => $entity_type_id,
-        // '%uuid' => $uuid,
-        // ];
-        // $message = new FormattableMarkup('Cannot export %type entity with
-        // UUID = %uuid to Content Hub because it was previously imported
-        // (did not originate from this site).', $args);
-        // $this->loggerFactory->get('acquia_contenthub')->error($message);
+        $args = [
+        '%type' => $entity_type_id,
+        '%uuid' => $uuid,
+        ];
+        $message = new FormattableMarkup('Cannot export %type entity with
+        UUID = %uuid to Content Hub because it was previously imported
+        (did not originate from this site).', $args);
+        $this->loggerFactory->get('acquia_contenthub')->error($message);
       }
       return FALSE;
     }
